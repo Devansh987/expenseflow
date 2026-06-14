@@ -1,399 +1,47 @@
-# Project Scope
-
-
-
-ExpenseFlow is a shared expense management application designed to handle messy real-world financial data. The application supports:
-
-
-
-User authentication
-
-Group creation and management
-
-Dynamic group membership (join/leave tracking)
-
-Expense creation and management
-
-Debt settlements
-
-Balance calculations
-
-CSV import with anomaly detection
-
-Import audit reports
-
-Anomaly Log
-
-AN-001 Duplicate Expense
-
-Example
-
-
-
-Dinner at Marina Bites
-
-
-
-Rows:
-
-
-
-08/02/2026 - Dinner at Marina Bites - Dev - ₹3200
-
-08/02/2026 - dinner - marina bites - Dev - ₹3200
-
-Detection Rule
-
-Same payer
-
-Same amount
-
-Same date
-
-Similar description
-
-Action
-
-
-
-Flag for review.
-
-
-
-Suggested resolution:
-
-Merge duplicate entries after user approval.
-
-
-
-AN-002 Missing Payer
-
-Example
-
-
-
-House cleaning supplies
-
-
-
-Detection Rule
-
-
-
-paid\_by field is empty
-
-
-
-Action
-
-
-
-Manual review required.
-
-
-
-Importer will not automatically assign a payer.
-
-
-
-AN-003 Settlement Logged as Expense
-
-Example
-
-
-
-Rohan paid Aisha back
-
-
-
-Detection Rule
-
-
-
-Description contains settlement-related keywords:
-
-
-
-paid back
-
-reimbursed
-
-settled
-
-Action
-
-
-
-Convert to Settlement record after user approval.
-
-
-
-AN-004 Name Inconsistency
-
-Examples
-
-Priya
-
-priya
-
-Priya S
-
-Detection Rule
-
-
-
-Case-insensitive name comparison.
-
-
-
-Action
-
-
-
-Suggest merge to existing member.
-
-
-
-User confirmation required.
-
-
-
-AN-005 Invalid Currency Precision
-
-Example
-
-
-
-₹899.995
-
-
-
-Detection Rule
-
-
-
-More than 2 decimal places.
-
-
-
-Action
-
-
-
-Round to 2 decimal places.
-
-
-
-Store original value in import report.
-
-
-
-AN-006 Missing Currency
-
-Example
-
-
-
-Groceries DMart - 15/03/2026
-
-
-
-Detection Rule
-
-
-
-Currency field is blank.
-
-
-
-Action
-
-
-
-Suggest INR based on surrounding records.
-
-Require confirmation.
-
-
-
-AN-007 Negative Expense
-
-Example
-
-
-
-Parasailing refund - USD -30
-
-
-
-Detection Rule
-
-
-
-Amount less than zero.
-
-
-
-Action
-
-
-
-Treat as refund transaction.
-
-Store separately in audit report.
-
-
-
-AN-008 Zero Amount Expense
-
-Example
-
-
-
-Dinner order Swiggy
-
-
-
-Detection Rule
-
-
-
-Amount equals zero.
-
-
-
-Action
-
-
-
-Flag for review.
-
-
-
-May represent correction or duplicate cancellation.
-
-
-
-AN-009 Ambiguous Date Format
-
-Example
-
-
-
-4/5/2026
-
-
-
-Detection Rule
-
-
-
-Date format can be interpreted multiple ways.
-
-
-
-Action
-
-
-
-Require user confirmation.
-
-
-
-AN-010 Membership Violation
-
-Example
-
-
-
-Expense includes Meera after moving out.
-
-
-
-Detection Rule
-
-
-
-Expense date falls outside membership period.
-
-
-
-Action
-
-
-
-Flag and suggest member removal.
-
-
-
-AN-011 Unknown Participant
-
-Example
-
-
-
-Kabir
-
-
-
-Detection Rule
-
-
-
-Participant not registered in group.
-
-
-
-Action
-
-
-
-Create temporary guest participant or require manual mapping.
-
-
-
-AN-012 Split Type Mismatch
-
-Example
-
-
-
-Split type = equal
-
-
-
-Split details contain weighted shares.
-
-
-
-Detection Rule
-
-
-
-Split type and split details disagree.
-
-
-
-Action
-
-Flag for review.
-
-Split type treated as source of truth.
+# Scope and Anomaly Log
+
+This document outlines the anomalies handled by the CSV Anomaly Detection Engine and the database schema used to power the application.
+
+## CSV Anomaly Detection Log
+
+When a user uploads a CSV file of historical expenses, the system parses it and passes it through our Anomaly Engine before committing it to the database. Instead of failing an entire batch because of one bad row, the engine acts as an audit filter: valid rows are imported successfully, and invalid rows are flagged with specific `ImportIssue` records, allowing users to review the "Audit Report" in the UI.
+
+Here is the log of data problems expected and handled by the system:
+
+1. **Inconsistent/Unmapped Usernames**
+   - **Problem**: The `Paid By` or `Split With` columns contain typos (e.g., "Rohan" vs "rohan") or reference users who are not registered members of the current group.
+   - **Handling**: The engine performs case-insensitive matching. If a name cannot be resolved to an active `Membership` in the group, the row is flagged with `UNKNOWN_PARTICIPANT`.
+2. **Duplicate Expenses**
+   - **Problem**: The CSV contains the exact same expense twice (same description, amount, date, and payer).
+   - **Handling**: The engine checks the database for existing expenses with identical signatures and flags the row as `DUPLICATE_EXPENSE`.
+3. **Missing or Invalid Amounts**
+   - **Problem**: The `Amount` field is empty, zero, negative, or contains non-numeric characters.
+   - **Handling**: The engine strips commas. If the value is `<= 0`, it flags `NEGATIVE_AMOUNT` or `ZERO_AMOUNT`. If it cannot be parsed as a float, it flags `INVALID_PRECISION`.
+4. **Settlements Masked as Expenses**
+   - **Problem**: A row describes a debt repayment (e.g., "Rohan paid Aisha") rather than a shared group expense.
+   - **Handling**: Detected via regex keywords in the description (e.g., "paid", "settled", "owed"). Flagged as `SETTLEMENT_AS_EXPENSE` with an instruction to use the native "Settle Up" feature instead.
+5. **Split Percentage Mismatches**
+   - **Problem**: When `Split Type` is `Percentage`, the provided percentages do not sum to 100%.
+   - **Handling**: The engine calculates the sum. If `abs(sum - 100) > 0.01`, the row is flagged with `SPLIT_TYPE_MISMATCH`.
+6. **Ambiguous Dates**
+   - **Problem**: Dates are in unexpected formats (e.g., `DD/MM/YYYY` vs `MM/DD/YYYY`).
+   - **Handling**: The engine attempts multiple format fallbacks via `dateutil.parser`. If all fail, it flags `AMBIGUOUS_DATE`.
+7. **Missing Payer**
+   - **Problem**: The `Paid By` column is entirely empty.
+   - **Handling**: Flagged as `MISSING_PAYER`.
 
 ---
 
 ## Database Schema
 
-*   **User**: `id`, `username`, `email`, `hashed_password`, `created_at`
-*   **Group**: `id`, `name`, `created_by`, `created_at`
-*   **Membership** (Tracks dynamic joins/leaves): `id`, `user_id`, `group_id`, `joined_at`, `left_at`
-*   **Expense**: `id`, `group_id`, `payer_id`, `description`, `amount`, `currency`, `original_amount`, `original_currency`, `expense_date`, `split_type`, `notes`, `created_at`
-*   **ExpenseSplit**: `id`, `expense_id`, `user_id`, `share_amount` (Decimal), `share_percentage`, `share_ratio`
-*   **Settlement**: `id`, `group_id`, `payer_id`, `receiver_id`, `amount`, `currency`, `settlement_date`, `notes`
-*   **ImportSession**: `id`, `group_id`, `uploaded_by`, `file_name`, `status` (PENDING, PROCESSING, COMPLETED, FAILED), `total_rows`, `successful_rows`, `failed_rows`, `uploaded_at`, `completed_at`
-*   **ImportIssue** (Anomaly Log): `id`, `import_session_id`, `row_number`, `issue_type` (Enum mapping to AN-001 through AN-012), `description`, `suggested_action`, `original_value`, `raw_data` (JSON), `status`
+The database relies on a strongly relational PostgreSQL schema hosted on Supabase.
 
-
-
-
-
+- **User**: Core entity holding authentication credentials (`email`, `hashed_password`) and profile (`username`).
+- **Group**: Represents a shared ledger (e.g., "Flatmates", "Trip to Goa").
+- **Membership**: Junction table linking `User` to `Group`. Tracks when users joined and left (`joined_at`, `left_at`).
+- **Expense**: Represents a single transaction. Tracks `amount`, `original_currency`, `expense_date`, `split_type` (`EQUAL`, `PERCENTAGE`, `SHARES`), and the `payer_id`.
+- **ExpenseSplit**: The exact breakdown of who owes what for a specific `Expense`. Every expense has multiple split records (one per involved user) tracking their specific `share_amount`.
+- **Settlement**: Represents a direct payment from one user to another to clear debt (`from_user_id`, `to_user_id`, `amount`).
+- **ExchangeRate**: A historical ledger of currency exchange rates (e.g., USD to INR) mapped by `effective_date` to ensure past expenses are calculated accurately without relying on live APIs during imports.
+- **ImportSession**: Tracks a CSV upload event (`file_name`, `status`, `total_rows`, `successful_rows`, `failed_rows`).
+- **ImportIssue**: Linked to an `ImportSession`. Tracks the specific anomalies found during ingestion (`row_number`, `issue_type`, `description`, `suggested_action`).
