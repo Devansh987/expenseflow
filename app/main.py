@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 
 from app.config import settings
-from app.routers import auth, group, expense, balance
+from app.routers import auth, group, expense, balance, settlement
 
 # ─── Application Factory ────────────────────────────────────────────
 # We create the FastAPI instance here and register routers.
@@ -18,6 +18,7 @@ app.include_router(auth.router)
 app.include_router(group.router)
 app.include_router(expense.router)
 app.include_router(balance.router)
+app.include_router(settlement.router)
 
 
 @app.get("/health", tags=["Health"])

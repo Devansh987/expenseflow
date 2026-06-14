@@ -17,6 +17,7 @@ from app.models.expense import Expense
 from app.models.expense_split import ExpenseSplit
 from app.models.user import User
 from app.models.group import Group
+from app.models.settlement import Settlement
 from app.schemas.balance import UserBalanceSummary, Debt, GroupBalanceReport
 
 
@@ -44,8 +45,30 @@ async def get_group_balances(db: AsyncSession, group_id: uuid.UUID) -> GroupBala
     share_result = await db.execute(share_query)
     share_amounts = {row.user_id: Decimal(str(row.total_share)) for row in share_result.all()}
 
-    # 3. Get all involved users
-    involved_user_ids = set(paid_amounts.keys()).union(set(share_amounts.keys()))
+    # 3. Calculate settlements paid by each user in this group
+    settlements_paid_query = select(
+        Settlement.payer_id,
+        func.sum(Settlement.amount).label("total_settlements_paid")
+    ).where(Settlement.group_id == group_id).group_by(Settlement.payer_id)
+    
+    sp_result = await db.execute(settlements_paid_query)
+    settlements_paid_amounts = {row.payer_id: Decimal(str(row.total_settlements_paid)) for row in sp_result.all()}
+
+    # 4. Calculate settlements received by each user in this group
+    settlements_received_query = select(
+        Settlement.receiver_id,
+        func.sum(Settlement.amount).label("total_settlements_received")
+    ).where(Settlement.group_id == group_id).group_by(Settlement.receiver_id)
+    
+    sr_result = await db.execute(settlements_received_query)
+    settlements_received_amounts = {row.receiver_id: Decimal(str(row.total_settlements_received)) for row in sr_result.all()}
+
+    # 5. Get all involved users
+    involved_user_ids = set(paid_amounts.keys()).union(
+        set(share_amounts.keys()), 
+        set(settlements_paid_amounts.keys()), 
+        set(settlements_received_amounts.keys())
+    )
     if not involved_user_ids:
         return GroupBalanceReport(group_id=group_id, balances=[], suggested_settlements=[])
         
@@ -53,14 +76,18 @@ async def get_group_balances(db: AsyncSession, group_id: uuid.UUID) -> GroupBala
     users_result = await db.execute(users_query)
     users_map = {user.id: user for user in users_result.scalars().all()}
 
-    # 4. Calculate Net Balances
+    # 6. Calculate Net Balances
     balances = []
     net_balances_decimal = {}
     
     for user_id in involved_user_ids:
         paid = paid_amounts.get(user_id, Decimal('0'))
         share = share_amounts.get(user_id, Decimal('0'))
-        net = paid - share
+        sp = settlements_paid_amounts.get(user_id, Decimal('0'))
+        sr = settlements_received_amounts.get(user_id, Decimal('0'))
+        
+        # Net Balance = Paid - Share + Settlements Paid - Settlements Received
+        net = paid - share + sp - sr
         
         net_balances_decimal[user_id] = net
         balances.append(
@@ -70,7 +97,7 @@ async def get_group_balances(db: AsyncSession, group_id: uuid.UUID) -> GroupBala
             )
         )
 
-    # 5. Calculate Suggested Settlements (Greedy Debt Simplification)
+    # 7. Calculate Suggested Settlements (Greedy Debt Simplification)
     debtors = []   # Users who owe money (net < 0)
     creditors = [] # Users who are owed money (net > 0)
     
@@ -129,7 +156,15 @@ async def get_user_overall_balance(db: AsyncSession, user_id: uuid.UUID) -> dict
     share_result = await db.execute(share_query)
     total_share = Decimal(str(share_result.scalar() or 0))
     
-    net_balance = total_paid - total_share
+    sp_query = select(func.sum(Settlement.amount)).where(Settlement.payer_id == user_id)
+    sp_result = await db.execute(sp_query)
+    total_sp = Decimal(str(sp_result.scalar() or 0))
+    
+    sr_query = select(func.sum(Settlement.amount)).where(Settlement.receiver_id == user_id)
+    sr_result = await db.execute(sr_query)
+    total_sr = Decimal(str(sr_result.scalar() or 0))
+    
+    net_balance = total_paid - total_share + total_sp - total_sr
     
     return {
         "user_id": user_id,
