@@ -19,18 +19,24 @@ export const login = (email, password) => {
 };
 export const getMe = () => API.get('/auth/me');
 export const getGroups = () => API.get('/groups');
-export const createGroup = (name) => API.post('/groups', { name });
-export const getGroupDetail = (id) => API.get(`/groups/${id}`);
-export const addMember = (groupId, userId) => API.post(`/groups/${groupId}/members/${userId}`);
+export const createGroup = (name) => API.post('/groups/', { name, description: '' });
+export const getGroupDetail = (groupId) => API.get(`/groups/${groupId}`);
+export const addMember = (groupId, email) => API.post(`/groups/${groupId}/members`, { email });
 export const removeMember = (groupId, userId) => API.delete(`/groups/${groupId}/members/${userId}`);
-export const createExpense = (groupId, data) => API.post(`/groups/${groupId}/expenses`, data);
+
 export const getBalances = (groupId) => API.get(`/groups/${groupId}/balances`);
-export const createSettlement = (groupId, data) => API.post(`/groups/${groupId}/settlements`, data);
 export const getSettlements = (groupId) => API.get(`/groups/${groupId}/settlements`);
+export const createSettlement = (groupId, data) => API.post(`/groups/${groupId}/settlements`, data);
+
+export const getExpenses = (groupId) => API.get(`/groups/${groupId}/expenses`);
+export const createExpense = (groupId, data) => API.post(`/groups/${groupId}/expenses`, data);
+
 export const uploadCSV = (groupId, file) => {
-  const form = new FormData();
-  form.append('file', file);
-  return API.post(`/groups/${groupId}/import`, form);
+  const formData = new FormData();
+  formData.append('file', file);
+  return API.post(`/groups/${groupId}/import`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
 };
 export const getImports = (groupId) => API.get(`/groups/${groupId}/imports`);
 export const getImportReport = (groupId, sessionId) => API.get(`/groups/${groupId}/imports/${sessionId}/report`);
