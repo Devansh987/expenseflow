@@ -8,5 +8,6 @@ in main.py with a URL prefix.
 from app.routers import auth
 from app.routers import group
 from app.routers import expense
+from app.routers import balance
 
-__all__ = ["auth", "group", "expense"]
+__all__ = ["auth", "group", "expense", "balance"]
