@@ -376,13 +376,22 @@ Split type and split details disagree.
 
 Action
 
-
-
 Flag for review.
 
-
-
 Split type treated as source of truth.
+
+---
+
+## Database Schema
+
+*   **User**: `id`, `username`, `email`, `hashed_password`, `created_at`
+*   **Group**: `id`, `name`, `created_by`, `created_at`
+*   **Membership** (Tracks dynamic joins/leaves): `id`, `user_id`, `group_id`, `joined_at`, `left_at`
+*   **Expense**: `id`, `group_id`, `payer_id`, `description`, `amount`, `currency`, `original_amount`, `original_currency`, `expense_date`, `split_type`, `notes`, `created_at`
+*   **ExpenseSplit**: `id`, `expense_id`, `user_id`, `share_amount` (Decimal), `share_percentage`, `share_ratio`
+*   **Settlement**: `id`, `group_id`, `payer_id`, `receiver_id`, `amount`, `currency`, `settlement_date`, `notes`
+*   **ImportSession**: `id`, `group_id`, `uploaded_by`, `file_name`, `status` (PENDING, PROCESSING, COMPLETED, FAILED), `total_rows`, `successful_rows`, `failed_rows`, `uploaded_at`, `completed_at`
+*   **ImportIssue** (Anomaly Log): `id`, `import_session_id`, `row_number`, `issue_type` (Enum mapping to AN-001 through AN-012), `description`, `suggested_action`, `original_value`, `raw_data` (JSON), `status`
 
 
 
