@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
+    # Frontend connection for CORS
+    FRONTEND_URL: str = "http://localhost:5173"
+
     model_config = {
         "env_file": ".env",       # Load from .env file in project root
         "case_sensitive": True,    # Match exact casing of env var names
