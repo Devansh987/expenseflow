@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     """
 
     # Database connection string using asyncpg driver for async support
-    DATABASE_URL: str = "postgresql+asyncpg://postgres:password@localhost:5432/expenseflow"
+    DATABASE_URL: str = "postgresql+asyncpg://postgres:devansh666@localhost:5432/expenseflow"
 
     # JWT configuration
     SECRET_KEY: str = "your-secret-key-change-this-in-production"
